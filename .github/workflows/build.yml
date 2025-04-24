@@ -1,0 +1,63 @@
+name: Build AppLocker APK/AAB
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  BUILD_NUMBER: ${{ github.run_number }}
+  PYTHON_VERSION: '3.9'
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install buildozer cython==0.29.33
+        sudo apt-get update
+        sudo apt-get install -y git unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev
+
+    - name: Set up Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: Copy icon and assets
+      run: |
+        mkdir -p ./assets
+        cp icon.png ./assets/app_icon.png
+        cp splash.png ./assets/splash.png
+
+    - name: Build APK
+      run: |
+        export PATH=$PATH:$HOME/.local/bin
+        buildozer -v android debug
+        ls -la ./bin/
+
+    - name: Upload APK
+      uses: actions/upload-artifact@v3
+      with:
+        name: applocker-apk
+        path: ./bin/*.apk
+        retention-days: 7
+
+    - name: Build AAB
+      run: |
+        buildozer -v android release
+        ls -la ./bin/
+
+    - name: Upload AAB
+      uses: actions/upload-artifact@v3
+      with:
+        name: applocker-aab
+        path: ./bin/*.aab
+        retention-days: 7
