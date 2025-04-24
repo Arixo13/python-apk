@@ -2,4 +2,3 @@ Kivy
 KivyMD
 jnius
 pyjnius
-android
