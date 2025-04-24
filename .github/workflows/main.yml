@@ -1,0 +1,91 @@
+name: Build Android Package
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  BUILD_NUMBER: ${{ github.run_number }}
+  PYTHON_VERSION: '3.9.6'
+  ANDROID_SDK_VERSION: '9477386'
+  ANDROID_NDK_VERSION: '25.2.9519653'
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update -y
+        sudo apt-get install -y \
+          git unzip openjdk-17-jdk \
+          python3-pip autoconf libtool \
+          pkg-config zlib1g-dev libncurses5-dev \
+          libncursesw5-dev libtinfo5 cmake \
+          libffi-dev libssl-dev
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip wheel
+        pip install buildozer cython==0.29.33 virtualenv
+
+    - name: Set up Android SDK/NDK
+      uses: android-actions/setup-android@v3
+      with:
+        ndk-version: ${{ env.ANDROID_NDK_VERSION }}
+        sdk-version: ${{ env.ANDROID_SDK_VERSION }}
+
+    - name: Prepare assets
+      run: |
+        mkdir -p ./assets
+        # نسخ ملفات الأصول مع معالجة الأخطاء
+        cp icon.png ./assets/app_icon.png || echo "Warning: Icon file not found, using default"
+        cp splash.png ./assets/splash.png || echo "Warning: Splash file not found, using default"
+
+    - name: Initialize Buildozer
+      run: |
+        buildozer init
+        # تحديث ملف buildozer.spec تلقائياً
+        sed -i "s/^title = .*/title = AppLocker/" buildozer.spec
+        sed -i "s|^icon.filename = .*|icon.filename = %(source.dir)s/assets/app_icon.png|" buildozer.spec
+        sed -i "s/^requirements = .*/requirements = python3==3.9.6,kivy==2.1.0,openssl,pyopenssl/" buildozer.spec
+
+    - name: Build APK (Debug)
+      run: |
+        export PATH=$PATH:$HOME/.local/bin
+        buildozer -v android debug
+        ls -la ./bin/
+
+    - name: Upload APK artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-debug-apk
+        path: ./bin/*debug.apk
+        retention-days: 7
+
+    - name: Build AAB (Release)
+      run: |
+        buildozer -v android release
+        ls -la ./bin/
+
+    - name: Upload AAB artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-release-aab
+        path: ./bin/*release.aab
+        retention-days: 7
+
+    - name: Clean up
+      run: |
+        rm -rf .buildozer/android/platform
